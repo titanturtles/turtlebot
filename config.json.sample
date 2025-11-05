@@ -1,0 +1,33 @@
+{
+  "discord": {
+    "token": "",
+    "channelId": "",
+    "guildId": ""
+  },
+  "mongodb": {
+    "uri": "mongodb://localhost:27017/picoctf_bot",
+    "dbName": "picoctf_bot"
+  },
+  "picoctf": {
+    "apiBaseUrl": "https://play.picoctf.org/api"
+  },
+  "csv": {
+    "filePath": "./data/users.csv",
+    "encoding": "utf8"
+  },
+  "scoring": {
+    "easy": 150,
+    "medium": 300,
+    "hard": 600
+  },
+  "scheduler": {
+    "updateIntervalMinutes": 15,
+    "dailyPostTime": "20:55",
+    "timezone": "America/Los_Angeles"
+  },
+  "features": {
+    "updateOnChange": true,
+    "postDailyScores": true,
+    "verbose": true
+  }
+}
