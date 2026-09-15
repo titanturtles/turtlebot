@@ -91,6 +91,22 @@ class DiscordBot {
     return embed;
   }
 
+  createTeamUpdateEmbed(teamname, oldStats, newStats, difference) {
+    const embed = new EmbedBuilder()
+      .setColor(0x00ff00)
+      .setTitle(`🎉 ${teamname} has made progress!`)
+      .addFields(
+        {
+          name: 'Team Score',
+          value: `${oldStats.team_score} → **${newStats.team_score}** (+${difference.team_score})`,
+          inline: true
+        }
+      )
+      .setTimestamp();
+
+    return embed;
+  }
+
   createScoreboardEmbed(userScores) {
     const sortedScores = [...userScores].sort((a, b) => b.totalScore - a.totalScore);
 

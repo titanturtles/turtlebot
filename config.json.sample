@@ -4,12 +4,19 @@
     "channelId": "",
     "guildId": ""
   },
-  "mongodb": {
-    "uri": "mongodb://localhost:27017/picoctf_bot",
-    "dbName": "picoctf_bot"
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "turtlebot",
+    "password": "YOUR_MYSQL_PASSWORD",
+    "database": "picoctf_bot"
   },
   "picoctf": {
-    "apiBaseUrl": "https://play.picoctf.org/api"
+    "apiBaseUrl": "https://learn.cylabacademy.org/api",
+    "username": "",
+    "password": "",
+    "profileDir": "./data/puppeteer-profile",
+    "headless": true
   },
   "csv": {
     "filePath": "./data/users.csv",

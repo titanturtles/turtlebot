@@ -1,0 +1,19 @@
+[Unit]
+Description=PicoCTF Discord Bot (turtlebot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=biajee
+WorkingDirectory=/home/biajee/Documents/code/turtlebot
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=turtlebot
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

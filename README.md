@@ -7,7 +7,7 @@ A Node.js Discord bot that automatically tracks PicoCTF gym statistics for multi
 - **Automatic User Tracking**: Store user IDs in CSV and fetch from PicoCTF API if needed
 - **Weighted Score Calculation**: Easy (150pts), Medium (300pts), Hard (600pts)
 - **Change Detection**: Only posts updates when stats change
-- **Database Persistence**: Stores user stats in MongoDB
+- **Database Persistence**: Stores user stats in MySQL
 - **Scheduled Updates**: Fetches stats every 15 minutes (configurable)
 - **Daily Leaderboard**: Posts a scoreboard at a specified time daily
 - **Discord Notifications**: Real-time notifications when users make progress
@@ -16,7 +16,7 @@ A Node.js Discord bot that automatically tracks PicoCTF gym statistics for multi
 ## Prerequisites
 
 - Node.js 16+
-- MongoDB instance running locally or remotely
+- MySQL instance running locally or remotely
 - Discord Bot Token
 - Discord Channel ID and Guild ID
 
@@ -37,7 +37,7 @@ npm install
    - Edit `config.json` with your settings:
      - Add your Discord bot token
      - Set channel ID and guild ID
-     - Configure MongoDB connection URI
+     - Configure MySQL connection details
      - Adjust scoring weights if needed
      - Set daily post time and timezone
 
@@ -54,14 +54,19 @@ npm install
     "channelId": "YOUR_CHANNEL_ID",
     "guildId": "YOUR_GUILD_ID"
   },
-  "mongodb": {
-    "uri": "mongodb://localhost:27017/picoctf_bot",
-    "dbName": "picoctf_bot"
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "turtlebot",
+    "password": "YOUR_MYSQL_PASSWORD",
+    "database": "picoctf_bot"
   },
   "picoctf": {
-    "apiBaseUrl": "https://play.picoctf.org/api",
-    "userEndpoint": "/users",
-    "gymStatsEndpoint": "/gym_stats"
+    "apiBaseUrl": "https://learn.cylabacademy.org/api",
+    "username": "",
+    "password": "",
+    "profileDir": "./data/puppeteer-profile",
+    "headless": true
   },
   "csv": {
     "filePath": "./data/users.csv",
@@ -113,17 +118,19 @@ npm start
 
 ## How It Works
 
-1. **Initialization**: Bot connects to MongoDB and Discord
+1. **Initialization**: Bot connects to MySQL and Discord, then launches a headless
+   browser session (picoCTF/CyLab sits behind Cloudflare, so stats are fetched via
+   an authenticated in-page `fetch`, not a plain HTTP client)
 2. **User Lookup**: For each user in CSV:
    - Check if ID exists in CSV
-   - If not, fetch from PicoCTF API and save to CSV
-3. **Stats Fetching**: Every 15 minutes:
-   - Fetch gym stats from PicoCTF API for each user
+   - If not, fetch from the picoCTF API and save to CSV
+3. **Stats Fetching**: Every `updateIntervalMinutes`:
+   - Fetch gym stats from the picoCTF API for each user
    - Calculate weighted score
    - Compare with stored stats
-   - If changed: Update MongoDB and post to Discord
+   - If changed: Update MySQL and post to Discord
 4. **Daily Scoreboard**: At configured time:
-   - Fetch all user stats from MongoDB
+   - Fetch all user stats from MySQL
    - Sort by total score
    - Post leaderboard embed to Discord
 
@@ -153,14 +160,16 @@ Each user record stores:
 ## Troubleshooting
 
 ### Bot won't start
-- Check MongoDB is running: `mongosh` or `mongo`
+- Check MySQL is running: `systemctl status mysql`
 - Verify Discord token is valid
 - Check channel ID and guild ID are correct
 
 ### Users not updating
 - Verify usernames match exactly (case-insensitive matching in code)
-- Check PicoCTF API is accessible: `curl https://play.picoctf.org/api/users/<username>/`
-- Check MongoDB connection string
+- Check picoCTF/CyLab connectivity with `node scripts/probe-api.js` (a plain `curl`
+  won't work — Cloudflare blocks non-browser requests, which is why this bot drives
+  a real headless browser instead of a simple HTTP client)
+- Check MySQL connection details in `config.json`
 
 ### No messages in Discord
 - Verify bot has message permissions in the channel

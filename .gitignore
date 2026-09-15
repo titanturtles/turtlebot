@@ -3,6 +3,8 @@ node_modules/
 config.json
 config.json.local
 data/users.csv
+data/teams.csv
+data/puppeteer-profile/
 *.log
 .DS_Store
 .vscode/
