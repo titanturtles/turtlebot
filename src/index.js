@@ -7,6 +7,7 @@ const DiscordBot = require('./modules/discordBot');
 const ScoreCalculator = require('./modules/scoreCalculator');
 const DataManager = require('./modules/dataManager');
 const Scheduler = require('./modules/scheduler');
+const CiscoPractice = require('./modules/ciscoPractice');
 
 class PicoCTFBot {
   constructor(config) {
@@ -19,6 +20,9 @@ class PicoCTFBot {
     this.scoreCalculator = new ScoreCalculator(config.scoring);
     this.dataManager = new DataManager(this.csvManager, this.csvTeamsManager, this.picoctfApi, this.database, this.scoreCalculator, config);
     this.scheduler = new Scheduler(config);
+    // Cisco Packet Tracer practice updates from the scoreboard (on unless cisco.enabled is false)
+    this.cisco = (config.cisco || {}).enabled === false ? null
+      : new CiscoPractice(this.database, this.discordBot, config);
     this.recentUpdates = new Set(); // Track recent updates to avoid duplicates
     this.updateInProgress = false;
   }
@@ -44,6 +48,14 @@ class PicoCTFBot {
         () => this.runScheduledUpdates(),
         this.config.scheduler.updateIntervalMinutes
       );
+
+      // Cisco practice: one HTTP request, no browser, so it can poll more often
+      if (this.cisco) {
+        this.scheduler.scheduleUpdateTask(
+          () => this.updateCiscoPractice(),
+          (this.config.cisco && this.config.cisco.updateIntervalMinutes) || 10
+        );
+      }
 
       // Schedule daily scoreboard post
       this.scheduler.scheduleDailyTask(
@@ -257,6 +269,14 @@ class PicoCTFBot {
 
   
 
+  async updateCiscoPractice() {
+    try {
+      await this.cisco.update();
+    } catch (error) {
+      console.error('Error during Cisco practice update:', error.message);
+    }
+  }
+
   async postDailyScoreboard() {
     try {
       if (this.config.features.verbose) {
@@ -267,17 +287,25 @@ class PicoCTFBot {
 
       if (allStats.length === 0) {
         console.warn('No user stats available for scoreboard');
-        return;
+      } else {
+        const embed = this.discordBot.createScoreboardEmbed(allStats);
+        await this.discordBot.sendEmbed(embed);
       }
-
-      const embed = this.discordBot.createScoreboardEmbed(allStats);
-      await this.discordBot.sendEmbed(embed);
 
       if (this.config.features.verbose) {
         console.log('Daily scoreboard posted');
       }
     } catch (error) {
       console.error('Error posting daily scoreboard:', error.message);
+    }
+
+    // Practice leaderboard section (independent of the picoCTF stats)
+    if (this.cisco) {
+      try {
+        await this.discordBot.sendEmbed(await this.cisco.dailyEmbed(), (this.config.cisco || {}).channelId);
+      } catch (error) {
+        console.error('Error posting practice leaderboard:', error.message);
+      }
     }
   }
 

@@ -36,5 +36,12 @@
     "updateOnChange": true,
     "postDailyScores": true,
     "verbose": true
+  },
+  "cisco": {
+    "enabled": true,
+    "feedUrl": "https://scoreboard.titanturtles.xyz/practice.json",
+    "updateIntervalMinutes": 10,
+    "dailyTop": 10,
+    "channelId": ""
   }
 }

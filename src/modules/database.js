@@ -42,6 +42,18 @@ class Database {
         last_updated DATETIME NOT NULL
       )
     `);
+    // Cisco practice progress already announced (level NAMES, so renumbering is harmless)
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS cisco_practice (
+        team VARCHAR(191) NOT NULL,
+        practice_id VARCHAR(191) NOT NULL,
+        cleared JSON NOT NULL,
+        done INT NOT NULL DEFAULT 0,
+        total INT NOT NULL DEFAULT 0,
+        last_updated DATETIME NOT NULL,
+        PRIMARY KEY (team, practice_id)
+      )
+    `);
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS team_stats (
         teamname VARCHAR(191) PRIMARY KEY,
@@ -85,6 +97,29 @@ class Database {
         stats.username.toLowerCase(), stats.userId, stats.easy, stats.medium, stats.hard,
         stats.totalScore, stats.easyWeight, stats.mediumWeight, stats.hardWeight
       ]
+    );
+  }
+
+  async ciscoRowCount() {
+    const [rows] = await this.pool.query('SELECT COUNT(*) AS n FROM cisco_practice');
+    return Number(rows[0].n);
+  }
+
+  async getCiscoProgress(team, practiceId) {
+    const [rows] = await this.pool.query(
+      'SELECT * FROM cisco_practice WHERE team = ? AND practice_id = ?', [team, practiceId]);
+    if (!rows[0]) return null;
+    const cleared = typeof rows[0].cleared === 'string' ? JSON.parse(rows[0].cleared) : rows[0].cleared;
+    return { ...rows[0], cleared: cleared || [] };
+  }
+
+  async upsertCiscoProgress(team, practiceId, cleared, done, total) {
+    await this.pool.query(
+      `INSERT INTO cisco_practice (team, practice_id, cleared, done, total, last_updated)
+       VALUES (?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE cleared = VALUES(cleared), done = VALUES(done), total = VALUES(total),
+         last_updated = NOW()`,
+      [team, practiceId, JSON.stringify(cleared), done, total]
     );
   }
 

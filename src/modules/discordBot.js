@@ -26,9 +26,9 @@ class DiscordBot {
     });
   }
 
-  async getChannel() {
+  async getChannel(channelId) {
     try {
-      const channel = await this.client.channels.fetch(this.config.discord.channelId);
+      const channel = await this.client.channels.fetch(channelId || this.config.discord.channelId);
       if (!channel) {
         throw new Error('Channel not found');
       }
@@ -38,9 +38,10 @@ class DiscordBot {
     }
   }
 
-  async sendMessage(content) {
+  // channelId is optional (the Cisco practice posts can go to their own channel)
+  async sendMessage(content, channelId) {
     try {
-      const channel = await this.getChannel();
+      const channel = await this.getChannel(channelId);
       await channel.send(content);
       return true;
     } catch (error) {
@@ -49,9 +50,9 @@ class DiscordBot {
     }
   }
 
-  async sendEmbed(embed) {
+  async sendEmbed(embed, channelId) {
     try {
-      const channel = await this.getChannel();
+      const channel = await this.getChannel(channelId);
       await channel.send({ embeds: [embed] });
       return true;
     } catch (error) {

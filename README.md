@@ -12,6 +12,28 @@ A Node.js Discord bot that automatically tracks PicoCTF gym statistics for multi
 - **Daily Leaderboard**: Posts a scoreboard at a specified time daily
 - **Discord Notifications**: Real-time notifications when users make progress
 - **Configuration**: All parameters in `config.json`
+- **Practice leaderboard**: Follows the TitanTurtles scoreboard's practice progress — Cisco
+  Packet Tracer modules plus Windows/Linux hardening (see below)
+
+## Practice updates
+
+Every `cisco.updateIntervalMinutes` (default 10) the bot reads the scoreboard's
+`/practice.json` (the same data as its public Practice page) and posts:
+
+- **Level cleared**: when a team clears new practice levels (one post per team and practice),
+  labelled by category (Cisco / Windows / Linux).
+- **Module complete**: a gold post when a team clears every level of a practice module.
+- **Daily board**: a Practice Leaderboard covering all categories (teams by levels cleared, then
+  modules completed), with a per-category breakdown when more than one category has clears,
+  right after the daily PicoCTF scoreboard.
+
+What it has announced is kept in the MySQL table `cisco_practice` by level *name*, so a restart
+or renumbered levels never repeat old posts. On the very first run (empty table) it records the
+current state without posting. At most 20 posts per cycle, then a one-line summary.
+
+All `cisco` settings are optional: `enabled` (default true), `feedUrl` (default
+`https://scoreboard.titanturtles.xyz/practice.json`), `updateIntervalMinutes` (10), `dailyTop`
+(10), `channelId` (default: the main `discord.channelId`).
 
 ## Prerequisites
 
