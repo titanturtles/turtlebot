@@ -41,7 +41,7 @@
     "enabled": true,
     "feedUrl": "https://scoreboard.titanturtles.xyz/practice.json",
     "updateIntervalMinutes": 10,
-    "dailyTop": 10,
+    "dailyTop": 0,
     "channelId": ""
   }
 }

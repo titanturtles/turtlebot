@@ -23,9 +23,9 @@ Every `cisco.updateIntervalMinutes` (default 10) the bot reads the scoreboard's
 - **Level cleared**: when a team clears new practice levels (one post per team and practice),
   labelled by category (Cisco / Windows / Linux).
 - **Module complete**: a gold post when a team clears every level of a practice module.
-- **Daily board**: a Practice Leaderboard covering all categories (teams by levels cleared, then
-  modules completed), with a per-category breakdown when more than one category has clears,
-  right after the daily PicoCTF scoreboard.
+- **Daily board**: a Practice Leaderboard covering all categories, listing **every team with any
+  non-zero progress** (ranked by levels cleared, then modules completed), with a per-category
+  breakdown when more than one category has clears, right after the daily PicoCTF scoreboard.
 
 What it has announced is kept in the MySQL table `cisco_practice` by level *name*, so a restart
 or renumbered levels never repeat old posts. On the very first run (empty table) it records the
@@ -33,7 +33,8 @@ current state without posting. At most 20 posts per cycle, then a one-line summa
 
 All `cisco` settings are optional: `enabled` (default true), `feedUrl` (default
 `https://scoreboard.titanturtles.xyz/practice.json`), `updateIntervalMinutes` (10), `dailyTop`
-(10), `channelId` (default: the main `discord.channelId`).
+(optional cap on how many teams the daily board lists; `0`/omitted = list all non-zero teams),
+`channelId` (default: the main `discord.channelId`).
 
 ## Prerequisites
 

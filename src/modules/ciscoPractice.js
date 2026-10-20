@@ -116,7 +116,8 @@ class CiscoPractice {
   // per-category breakdown so Windows and Linux progress is visible, not just folded into the total.
   async dailyEmbed() {
     const feed = await this.fetchFeed();
-    const top = this.cfg.dailyTop || 10;
+    // dailyTop is an OPTIONAL hard cap; unset (the default) lists every team with non-zero progress.
+    const cap = this.cfg.dailyTop > 0 ? this.cfg.dailyTop : Infinity;
     const kindOf = new Map(feed.practices.map((p) => [p.id, p.kind || 'cisco']));
     const totalLevels = feed.practices.reduce((s, p) => s + p.levels.length, 0);
 
@@ -143,13 +144,23 @@ class CiscoPractice {
       .map((k) => `${CATEGORIES[k].emoji} ${fmtNum(r.byCat[k])}`)
       .join(' · ');
 
+    // List every non-zero team. Discord caps an embed description at 4096 chars, so stop short of
+    // that (and of an optional dailyTop) and note any remainder with a link to the full board.
+    const DESC_BUDGET = 3900;
     let description = '';
-    rows.slice(0, top).forEach((r, i) => {
+    let listed = 0;
+    for (const [i, r] of rows.entries()) {
+      if (listed >= cap) break;
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-      description += `${medal} **${r.team}** - ${fmtNum(r.levels)} level${r.levels === 1 ? '' : 's'}` +
+      const line = `${medal} **${r.team}** - ${fmtNum(r.levels)} level${r.levels === 1 ? '' : 's'}` +
         (showSplit ? ` (${breakdown(r)})` : '') +
         (r.modules ? ` · ${r.modules} module${r.modules === 1 ? '' : 's'} complete` : '') + '\n';
-    });
+      if (description.length + line.length > DESC_BUDGET) break;
+      description += line;
+      listed++;
+    }
+    const remaining = rows.length - listed;
+    if (remaining > 0) description += `…and ${remaining} more — see ${this.siteUrl}/practice\n`;
 
     // footer: practice count per category present, then level/team totals
     const catCounts = CATEGORY_ORDER
