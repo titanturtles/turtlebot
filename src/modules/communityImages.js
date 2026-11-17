@@ -1,6 +1,6 @@
 // #homework-submission: read community-image score-report screenshots, judge, store, announce.
-// Attachments need no privileged intent; message *text* is only visible when the bot is
-// mentioned (no MESSAGE_CONTENT intent), so linking uses "@turtlebot link <name> [team]".
+// Reading attachments needs the privileged Message Content intent (community.messageContent: true);
+// linking uses "@turtlebot link <name> [team]".
 const fs = require('fs');
 const path = require('path');
 const { EmbedBuilder } = require('discord.js');

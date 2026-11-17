@@ -52,8 +52,9 @@ is ever deleted or punished automatically; suspicious reports are only labelled 
   with less time than before. Exact duplicate screenshots (SHA-256) are ignored.
 - **Who**: Discord users are mapped with a message in the channel that mentions the bot:
   `@turtlebot link <name> [team]` (stored in `discord_links`). Unlinked users are stored under
-  their Discord id and asked to link. Attachments need no privileged intent (message text is only
-  visible on mentions, so no MESSAGE_CONTENT intent is needed).
+  their Discord id and asked to link. Discord hides attachments from bots on messages that don't mention them, so the
+  **Message Content** privileged intent must be switched on in the Discord developer portal (Bot page) and
+  `community.messageContent: true` set in config.json; the bot cannot see screenshots without it.
 - **Storage**: MySQL table `community_submissions` (user, team, image, score, time, verdict,
   reasons, image hash, screenshot in `data/community/`).
 - **Announce**: accepted (`ok`) reports post an "Image scoring update" embed (user/team, image,
