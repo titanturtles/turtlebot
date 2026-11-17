@@ -19,6 +19,7 @@ class Database {
       });
       await this.pool.query('SELECT 1');
       await this._ensureTables();
+      await this._ensureCommunityTables();
       console.log('Connected to MySQL');
       return true;
     } catch (error) {
@@ -63,6 +64,80 @@ class Database {
         last_updated DATETIME NOT NULL
       )
     `);
+  }
+
+  async _ensureCommunityTables() {
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS discord_links (
+        discord_id VARCHAR(32) PRIMARY KEY,
+        name VARCHAR(191) NOT NULL,
+        team VARCHAR(191) NULL,
+        linked_at DATETIME NOT NULL
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS community_submissions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        image_hash CHAR(64) NOT NULL UNIQUE,
+        discord_id VARCHAR(32) NOT NULL,
+        user_key VARCHAR(191) NOT NULL,
+        user_name VARCHAR(191) NOT NULL,
+        team VARCHAR(191) NULL,
+        image_name VARCHAR(191) NULL,
+        image_key VARCHAR(191) NULL,
+        score DOUBLE NULL,
+        max_score DOUBLE NULL,
+        found_vulns INT NULL,
+        total_vulns INT NULL,
+        penalties DOUBLE NULL,
+        elapsed_seconds INT NULL,
+        verdict VARCHAR(16) NOT NULL,
+        reasons JSON NOT NULL,
+        image_file VARCHAR(255) NULL,
+        message_url VARCHAR(255) NULL,
+        created_at DATETIME NOT NULL,
+        INDEX idx_image_key (image_key)
+      )
+    `);
+  }
+
+  async getDiscordLink(discordId) {
+    const [rows] = await this.pool.query('SELECT * FROM discord_links WHERE discord_id = ?', [discordId]);
+    return rows[0] || null;
+  }
+
+  async setDiscordLink(discordId, name, team) {
+    await this.pool.query(
+      `INSERT INTO discord_links (discord_id, name, team, linked_at) VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE name = VALUES(name), team = VALUES(team), linked_at = NOW()`,
+      [discordId, name, team || null]);
+  }
+
+  async getSubmissionByHash(hash) {
+    const [rows] = await this.pool.query('SELECT * FROM community_submissions WHERE image_hash = ?', [hash]);
+    return rows[0] || null;
+  }
+
+  async getSubmissionsForImage(imageKey) {
+    const [rows] = await this.pool.query(
+      'SELECT * FROM community_submissions WHERE image_key = ? ORDER BY created_at', [imageKey]);
+    return rows;
+  }
+
+  async getAllSubmissions() {
+    const [rows] = await this.pool.query('SELECT * FROM community_submissions ORDER BY created_at');
+    return rows;
+  }
+
+  async insertSubmission(s) {
+    await this.pool.query(
+      `INSERT INTO community_submissions
+        (image_hash, discord_id, user_key, user_name, team, image_name, image_key, score, max_score,
+         found_vulns, total_vulns, penalties, elapsed_seconds, verdict, reasons, image_file, message_url, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [s.imageHash, s.discordId, s.userKey, s.userName, s.team || null, s.imageName, s.imageKey, s.score,
+        s.maxScore, s.foundVulns, s.totalVulns, s.penalties, s.elapsedSeconds, s.verdict,
+        JSON.stringify(s.reasons || []), s.imageFile || null, s.messageUrl || null]);
   }
 
   async disconnect() {
