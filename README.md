@@ -36,6 +36,43 @@ All `cisco` settings are optional: `enabled` (default true), `feedUrl` (default
 (optional cap on how many teams the daily board lists; `0`/omitted = list all non-zero teams),
 `channelId` (default: the main `discord.channelId`).
 
+## Community image score reports
+
+When someone posts a screenshot of a CyberPatriot-style score report in `#homework-submission`
+the bot reads it (score, image name, time elapsed, found/total vulns, penalties), judges it, and
+replies with an embed and a reaction (✅ ok, ⚠️ suspicious, ❓ unreadable, ♻️ duplicate). Nothing
+is ever deleted or punished automatically; suspicious reports are only labelled for a coach.
+
+- **Vision**: the screenshot is saved to a temp dir and read by the Claude Code CLI
+  (`claude -p --tools Read --model haiku`), so no API key is needed; the box just needs `claude`
+  logged in for the service user. Set `community.claudeBin` / `community.model` to change it.
+- **Judging**: out-of-range score, found > total vulns, signs of editing, a score implausibly
+  fast for its time (about 45 min for a full score, ~1 min per vuln, and a quarter of the median
+  pace of earlier submissions for that image), a repeat of the same score+time, or a higher score
+  with less time than before. Exact duplicate screenshots (SHA-256) are ignored.
+- **Who**: Discord users are mapped with a message in the channel that mentions the bot:
+  `@turtlebot link <name> [team]` (stored in `discord_links`). Unlinked users are stored under
+  their Discord id and asked to link. Attachments need no privileged intent (message text is only
+  visible on mentions, so no MESSAGE_CONTENT intent is needed).
+- **Storage**: MySQL table `community_submissions` (user, team, image, score, time, verdict,
+  reasons, image hash, screenshot in `data/community/`).
+- **Announce**: accepted (`ok`) reports post an "Image scoring update" embed (user/team, image,
+  score, time, rank for that image) in `#ctf-stuff`.
+- **Scoreboard feed**: the bot serves `http://127.0.0.1:8098/community.json` (best/latest per
+  user/team per image, rank, verdict) and `/community/img/<sha256>` thumbnails for Sarpedon's
+  "Community images" page. Bound to localhost; Sarpedon proxies it.
+
+Enable it in `config.json` (never commit that file); channels are found by name unless you give
+`submissionChannelId` / `announceChannelId`, and `discord.guildId` must be set:
+
+```json
+"community": { "enabled": true, "submissionChannelName": "homework-submission",
+  "announceChannelName": "ctf-stuff", "claudeBin": "claude", "model": "haiku",
+  "feedHost": "127.0.0.1", "feedPort": 8098 }
+```
+
+Run the tests with `npm test`.
+
 ## Prerequisites
 
 - Node.js 16+

@@ -43,5 +43,14 @@
     "updateIntervalMinutes": 10,
     "dailyTop": 0,
     "channelId": ""
+  },
+  "community": {
+    "enabled": false,
+    "submissionChannelName": "homework-submission",
+    "announceChannelName": "ctf-stuff",
+    "claudeBin": "claude",
+    "model": "haiku",
+    "feedHost": "127.0.0.1",
+    "feedPort": 8098
   }
 }

@@ -8,6 +8,8 @@ const ScoreCalculator = require('./modules/scoreCalculator');
 const DataManager = require('./modules/dataManager');
 const Scheduler = require('./modules/scheduler');
 const CiscoPractice = require('./modules/ciscoPractice');
+const CommunityImages = require('./modules/communityImages');
+const { startFeedServer } = require('./modules/communityFeed');
 
 class PicoCTFBot {
   constructor(config) {
@@ -23,6 +25,9 @@ class PicoCTFBot {
     // Cisco Packet Tracer practice updates from the scoreboard (on unless cisco.enabled is false)
     this.cisco = (config.cisco || {}).enabled === false ? null
       : new CiscoPractice(this.database, this.discordBot, config);
+    // Community-image score reports from #homework-submission (opt in with community.enabled)
+    this.community = (config.community || {}).enabled
+      ? new CommunityImages(this.database, this.discordBot, config.community) : null;
     this.recentUpdates = new Set(); // Track recent updates to avoid duplicates
     this.updateInProgress = false;
   }
@@ -39,6 +44,12 @@ class PicoCTFBot {
 
       // Initialize Discord Bot
       await this.discordBot.initialize();
+
+      if (this.community) {
+        this.community.attach();
+        const c = this.config.community;
+        startFeedServer({ database: this.database, dataDir: this.community.dataDir, host: c.feedHost, port: c.feedPort });
+      }
 
       // Validate and populate missing user IDs
       await this.validateUserIds();
