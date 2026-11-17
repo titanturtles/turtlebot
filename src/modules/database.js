@@ -118,6 +118,13 @@ class Database {
     return rows[0] || null;
   }
 
+  // rows already stored for a Discord message (message_url ends in /<message id>)
+  async countSubmissionsForMessage(messageId) {
+    const [rows] = await this.pool.query(
+      'SELECT COUNT(*) AS n FROM community_submissions WHERE message_url LIKE ?', ['%/' + String(messageId).replace(/\D/g, '')]);
+    return Number(rows[0].n);
+  }
+
   async getSubmissionsForImage(imageKey) {
     const [rows] = await this.pool.query(
       'SELECT * FROM community_submissions WHERE image_key = ? ORDER BY created_at', [imageKey]);
@@ -134,10 +141,10 @@ class Database {
       `INSERT INTO community_submissions
         (image_hash, discord_id, user_key, user_name, team, image_name, image_key, score, max_score,
          found_vulns, total_vulns, penalties, elapsed_seconds, verdict, reasons, image_file, message_url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))`,
       [s.imageHash, s.discordId, s.userKey, s.userName, s.team || null, s.imageName, s.imageKey, s.score,
         s.maxScore, s.foundVulns, s.totalVulns, s.penalties, s.elapsedSeconds, s.verdict,
-        JSON.stringify(s.reasons || []), s.imageFile || null, s.messageUrl || null]);
+        JSON.stringify(s.reasons || []), s.imageFile || null, s.messageUrl || null, s.createdAt || null]);
   }
 
   async disconnect() {
