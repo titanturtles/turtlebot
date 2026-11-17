@@ -4,9 +4,12 @@ class DiscordBot {
   constructor(token, config) {
     this.token = token;
     this.config = config;
-    this.client = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
-    });
+    // Discord withholds attachments (and text) from messages that don't mention the bot unless the
+    // privileged Message Content intent is on, so reading screenshots needs it enabled in the developer
+    // portal AND `community.messageContent: true` here (login fails with "disallowed intents" otherwise).
+    const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
+    if (((config || {}).community || {}).messageContent) intents.push(GatewayIntentBits.MessageContent);
+    this.client = new Client({ intents });
     this.ready = false;
   }
 
