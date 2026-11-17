@@ -66,42 +66,113 @@ class CommunityImages {
       : { name: display, team: null, linked: false, key: `discord:${m.author.id}` };
   }
 
-  async handleAttachment(m, att) {
-    if (att.size > MAX_BYTES) return m.reply('That screenshot is over 8 MB; please crop or compress it.');
+  // Shared pipeline for live posts and the backfill: download, SHA-256 dedupe, read, judge, store.
+  // Returns {status: 'toolarge'|'duplicate'|'failed'|'stored', ...}; never replies/reacts/announces.
+  // opts.createdAt keeps a historical message's original time as the submission time.
+  async processAttachment(m, att, opts = {}) {
+    if (att.size > MAX_BYTES) return { status: 'toolarge' };
+    const ext = EXTS[(att.contentType || '').split(';')[0]];
     const buf = await this.fetchImage(att.url);
     const hash = sr.sha256(buf);
     const dup = await this.db.getSubmissionByHash(hash);
-    if (dup) {
-      await m.react(EMOJI.duplicate).catch(() => {});
-      return m.reply(`${EMOJI.duplicate} That exact screenshot was already submitted (${dup.image_name || 'unknown image'}, `
-        + `score ${dup.score ?? '?'}). Duplicates are ignored.`);
-    }
+    if (dup) return { status: 'duplicate', dup };
     const who = await this.identify(m);
     let report;
     try {
-      report = await this.read(buf, EXTS[att.contentType.split(';')[0]]);
+      report = await this.read(buf, ext);
     } catch (e) {
-      console.error('vision failed:', e.message);
-      return m.reply('I could not read that screenshot right now (vision step failed). A coach can retry later.');
+      return { status: 'failed', error: e.message };
     }
     const history = report.imageKey ? await this.db.getSubmissionsForImage(report.imageKey) : [];
     const { verdict, reasons } = sr.judge(report, history, who.key);
     let imageFile = null;
     if (verdict !== 'unreadable') {
       fs.mkdirSync(this.dataDir, { recursive: true });
-      imageFile = hash + EXTS[att.contentType.split(';')[0]];
+      imageFile = hash + ext;
       fs.writeFileSync(path.join(this.dataDir, imageFile), buf);
     }
     const row = {
       imageHash: hash, discordId: m.author.id, userKey: who.key, userName: who.name, team: who.team,
       imageName: report.imageName, imageKey: report.imageKey, score: report.score, maxScore: report.maxScore,
       foundVulns: report.foundVulns, totalVulns: report.totalVulns, penalties: report.penalties,
-      elapsedSeconds: report.elapsedSeconds, verdict, reasons, imageFile, messageUrl: m.url
+      elapsedSeconds: report.elapsedSeconds, verdict, reasons, imageFile, messageUrl: m.url,
+      createdAt: opts.createdAt || null
     };
     await this.db.insertSubmission(row);
-    await m.react(EMOJI[verdict]).catch(() => {});
-    await m.reply({ embeds: [this.replyEmbed(report, verdict, reasons, who)] });
-    if (verdict === 'ok') await this.announce(row);
+    return { status: 'stored', row, report, verdict, reasons, who };
+  }
+
+  async handleAttachment(m, att) {
+    if (att.size > MAX_BYTES) return m.reply('That screenshot is over 8 MB; please crop or compress it.');
+    const r = await this.processAttachment(m, att);
+    if (r.status === 'duplicate') {
+      await m.react(EMOJI.duplicate).catch(() => {});
+      return m.reply(`${EMOJI.duplicate} That exact screenshot was already submitted (${r.dup.image_name || 'unknown image'}, `
+        + `score ${r.dup.score ?? '?'}). Duplicates are ignored.`);
+    }
+    if (r.status === 'failed') {
+      console.error('vision failed:', r.error);
+      return m.reply('I could not read that screenshot right now (vision step failed). A coach can retry later.');
+    }
+    await m.react(EMOJI[r.verdict]).catch(() => {});
+    await m.reply({ embeds: [this.replyEmbed(r.report, r.verdict, r.reasons, r.who)] });
+    if (r.verdict === 'ok') await this.announce(r.row);
+  }
+
+  // Load the last `days` days of the submission channel into the scoreboard. Silent unless
+  // opts.send (then replies + reactions only; old posts are NEVER announced in #ctf-stuff).
+  // opts.dryRun reads nothing and stores nothing. Idempotent: skips by message id and by hash.
+  async backfill(channel, opts = {}) {
+    const days = opts.days || 7;
+    const log = opts.log || (() => {});
+    const cutoff = (opts.now || Date.now()) - days * 86400000;
+    const sum = { messages: 0, images: 0, read: 0, ok: 0, suspicious: 0, unreadable: 0, duplicates: 0,
+      skipped: 0, failed: 0, errors: 0 };
+    const msgs = [];
+    let before;
+    for (let done = false; !done;) {
+      const page = await channel.messages.fetch(before ? { limit: 100, before } : { limit: 100 });
+      if (!page.size) break;
+      for (const m of page.values()) {
+        before = !before || BigInt(m.id) < BigInt(before) ? m.id : before;
+        if (m.createdTimestamp < cutoff) done = true; else msgs.push(m);
+      }
+      if (page.size < 100) done = true;
+    }
+    msgs.sort((a, b) => a.createdTimestamp - b.createdTimestamp); // oldest first so judging sees history in order
+    for (const m of msgs) {
+      if (m.author?.bot) continue;
+      const atts = [...(m.attachments?.values() || [])].filter((a) => EXTS[(a.contentType || '').split(';')[0]]).slice(0, 3);
+      if (!atts.length) continue;
+      sum.messages++;
+      sum.images += atts.length;
+      if (await this.db.countSubmissionsForMessage(m.id) >= atts.length) { sum.skipped += atts.length; log(`skip ${m.id} (already stored)`); continue; }
+      for (const a of atts) {
+        const tag = `${m.id} ${m.author?.username || m.author?.id} ${new Date(m.createdTimestamp).toISOString()}`;
+        try {
+          if (opts.dryRun) {
+            const buf = await this.fetchImage(a.url);
+            const dup = await this.db.getSubmissionByHash(sr.sha256(buf));
+            if (dup) { sum.duplicates++; log(`would skip duplicate ${tag}`); } else log(`would read+store ${tag}`);
+            continue;
+          }
+          const r = await this.processAttachment(m, a, { createdAt: new Date(m.createdTimestamp) });
+          if (r.status === 'duplicate') { sum.duplicates++; log(`duplicate ${tag}`); continue; }
+          if (r.status === 'toolarge') { sum.errors++; log(`too large ${tag}`); continue; }
+          if (r.status === 'failed') { sum.failed++; log(`vision failed ${tag}: ${r.error}`); continue; }
+          sum.read++; sum[r.verdict]++;
+          log(`${r.verdict} ${tag} ${r.row.imageName || '?'} ${r.row.score ?? '?'}`);
+          if (opts.send) {
+            await m.react(EMOJI[r.verdict]).catch(() => {});
+            await m.reply({ embeds: [this.replyEmbed(r.report, r.verdict, r.reasons, r.who)] }).catch((e) => log(`reply failed ${tag}: ${e.message}`));
+          }
+        } catch (e) {
+          sum.errors++;
+          log(`error ${tag}: ${e.message}`);
+        }
+      }
+    }
+    return sum;
   }
 
   replyEmbed(report, verdict, reasons, who) {

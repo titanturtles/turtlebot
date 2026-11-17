@@ -71,6 +71,24 @@ Enable it in `config.json` (never commit that file); channels are found by name 
   "feedHost": "127.0.0.1", "feedPort": 8098 }
 ```
 
+### Backfill old screenshots
+
+```bash
+node scripts/backfill-community.js [--days 7] [--dry-run] [--send]
+```
+
+Reads the `#homework-submission` history (paginated, bounded by `--days`, default 7) with the live
+`config.json` and runs every image through the same pipeline as live posts (vision read, judge,
+SHA-256 dedupe, store), keeping each message's original author and post time. Oldest first, so
+judging sees earlier submissions. Silent by default: no replies, reactions or `#ctf-stuff`
+announcements. `--dry-run` lists what would happen (no vision calls, nothing stored); `--send`
+also replies/reacts on the old messages (announcements are never sent for backfilled posts).
+Idempotent: messages already stored (by message id) and screenshots already stored (by hash) are
+skipped. Vision failures/errors are logged per image and the run continues; the end summary shows
+messages, images, read (ok / suspicious / unreadable), duplicates, already-stored, vision-failed
+and errors (exit code 2 if any failed; re-run to retry them). Run it once after the service has the
+new code. Users who have not run `link` are stored under their Discord name and can be linked later.
+
 Run the tests with `npm test`.
 
 ## Prerequisites

@@ -79,11 +79,12 @@ function fakes(readOut) {
   const db = {
     getDiscordLink: async (id) => links[id] || null,
     setDiscordLink: async (id, name, team) => { links[id] = { name, team }; },
+    countSubmissionsForMessage: async (id) => subs.filter((x) => (x.url || '').endsWith('/' + id)).length,
     getSubmissionByHash: async (h) => subs.find((s) => s.image_hash === h) || null,
     getSubmissionsForImage: async (k) => subs.filter((s) => s.image_key === k),
     insertSubmission: async (s) => subs.push({ image_hash: s.imageHash, user_key: s.userKey, user_name: s.userName, team: s.team,
       image_name: s.imageName, image_key: s.imageKey, score: s.score, elapsed_seconds: s.elapsedSeconds, verdict: s.verdict,
-      reasons: JSON.stringify(s.reasons), created_at: new Date() })
+      reasons: JSON.stringify(s.reasons), url: s.messageUrl, created_at: s.createdAt || new Date() })
   };
   const sent = [];
   const bot = { client: { on() {}, user: { id: 'BOT' } }, config: { discord: {} }, sendEmbed: async (e, ch) => { sent.push({ e, ch }); } };
@@ -141,4 +142,65 @@ test('vision failure replies without storing', async () => {
   const m = msg(); await f.ci.onMessage(m);
   assert.strictEqual(f.subs.length, 0);
   assert.match(m.replies[0], /could not read/);
+});
+
+// ---- backfill ----
+const NOW = Date.UTC(2026, 10, 17, 12);
+const DAY = 86400000;
+function hist(f, specs) { // specs: [{id, ageDays, png?}] -> fake channel with paginated fetch
+  const all = specs.map((x) => {
+    const m = msg({ id: x.id, url: 'https://discord.com/channels/1/2/' + x.id, createdTimestamp: NOW - x.ageDays * DAY, ...(x.o || {}) });
+    return m;
+  }).sort((a, b) => Number(BigInt(b.id) - BigInt(a.id)));
+  let calls = 0;
+  return { calls: () => calls, messages: { fetch: async ({ limit, before }) => { calls++;
+    const rows = all.filter((m) => !before || BigInt(m.id) < BigInt(before)).slice(0, limit);
+    return new Map(rows.map((m) => [m.id, m])); } } };
+}
+const imgs = (n) => new Map(Array.from({ length: n }, (_, i) => [String(i), { url: 'https://cdn.discordapp.com/' + i + '.png', size: 100, contentType: 'image/png' }]));
+
+test('backfill: stores in-window posts silently with original time, skips old, is idempotent', async () => {
+  const f = fakes({ readable: true, image_name: 'Ubuntu 22', score: 70, elapsed: '1:10:00' });
+  let k = 0; f.ci.read = async () => sr.normalizeReport({ readable: true, image_name: 'Ubuntu 22', score: 60 + 5 * k, elapsed: `1:${10 + 10 * k++}:00` });
+  let n = 0; f.ci.fetchImage = async () => Buffer.concat([PNG, Buffer.from(String(n++))]); // distinct hashes
+  const ch = hist(f, [{ id: '300', ageDays: 1 }, { id: '200', ageDays: 3 }, { id: '100', ageDays: 9 },
+    { id: '250', ageDays: 2, o: { attachments: new Map() } }, { id: '260', ageDays: 2, o: { author: { id: 'B', bot: true } } }]);
+  const logs = [];
+  const s = await f.ci.backfill(ch, { days: 7, now: NOW, log: (l) => logs.push(l) });
+  assert.strictEqual(f.subs.length, 2);
+  assert.strictEqual(s.read, 2); assert.strictEqual(s.ok, 2);
+  assert.deepStrictEqual(f.subs.map((x) => +x.created_at), [NOW - 3 * DAY, NOW - DAY]); // original times, oldest first
+  assert.strictEqual(f.sent.length, 0); // no #ctf-stuff announcements
+  // second run: nothing new, no vision calls
+  let reads = 0; f.ci.read = async () => { reads++; throw new Error('should not read'); };
+  const s2 = await f.ci.backfill(ch, { days: 7, now: NOW });
+  assert.strictEqual(reads, 0); assert.strictEqual(s2.skipped, 2); assert.strictEqual(f.subs.length, 2);
+});
+
+test('backfill: paginates past 100 messages', async () => {
+  const f = fakes({ readable: true, image_name: 'U', score: 50, elapsed: '1:00:00' });
+  const specs = Array.from({ length: 150 }, (_, i) => ({ id: String(1000 + i), ageDays: 1, o: { attachments: new Map() } }));
+  const ch = hist(f, specs);
+  const s = await f.ci.backfill(ch, { days: 7, now: NOW });
+  assert.ok(ch.calls() >= 2); assert.strictEqual(s.messages, 0);
+});
+
+test('backfill: dedupes by hash, counts vision failures/errors and continues; replies only with send', async () => {
+  const f = fakes({ readable: true, image_name: 'Ubuntu 22', score: 70, elapsed: '1:10:00' });
+  const ch = hist(f, [{ id: '1', ageDays: 1 }, { id: '2', ageDays: 1 }]); // same PNG -> 2nd is duplicate
+  const s = await f.ci.backfill(ch, { days: 7, now: NOW });
+  assert.strictEqual(s.read, 1); assert.strictEqual(s.duplicates, 1);
+  const g = fakes({});
+  g.ci.read = async () => { throw new Error('vision down'); };
+  const m = msg({ id: '5', createdTimestamp: NOW - DAY, url: 'x/5' });
+  const s3 = await g.ci.backfill({ messages: { fetch: async ({ before }) => new Map(before ? [] : [['5', m]]) } }, { days: 7, now: NOW, log() {} });
+  assert.strictEqual(s3.failed, 1); assert.strictEqual(g.subs.length, 0); assert.strictEqual(m.replies.length, 0);
+  const h = fakes({ readable: true, image_name: 'U', score: 50, elapsed: '1:00:00' });
+  const m2 = msg({ id: '6', createdTimestamp: NOW - DAY, url: 'x/6' });
+  const s4 = await h.ci.backfill({ messages: { fetch: async ({ before }) => new Map(before ? [] : [['6', m2]]) } }, { days: 7, now: NOW, send: true });
+  assert.strictEqual(s4.ok, 1); assert.deepStrictEqual(m2.reacts, ['✅']); assert.strictEqual(m2.replies.length, 1); assert.strictEqual(h.sent.length, 0);
+  const m3 = msg({ id: '7', createdTimestamp: NOW - DAY, url: 'x/7' });
+  const d = fakes({ readable: true, image_name: 'U', score: 50, elapsed: '1:00:00' });
+  const s5 = await d.ci.backfill({ messages: { fetch: async ({ before }) => new Map(before ? [] : [['7', m3]]) } }, { days: 7, now: NOW, dryRun: true });
+  assert.strictEqual(d.subs.length, 0); assert.strictEqual(s5.read, 0);
 });
