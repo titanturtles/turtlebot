@@ -91,7 +91,6 @@ function judge(report, history, me) {
     return { verdict: 'unreadable', reasons: ['could not read score and image name from the screenshot'] };
   }
   const { score, maxScore, elapsedSeconds: secs } = report;
-  if (secs == null) reasons.push('no time elapsed visible on the report');
   if (score < 0 || score > maxScore) reasons.push(`score ${score} is outside 0-${maxScore}`);
   if (report.foundVulns != null && report.totalVulns != null && report.foundVulns > report.totalVulns) {
     reasons.push(`found ${report.foundVulns} of only ${report.totalVulns} vulns`);
