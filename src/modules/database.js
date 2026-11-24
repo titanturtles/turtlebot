@@ -111,6 +111,10 @@ class Database {
       `INSERT INTO discord_links (discord_id, name, team, linked_at) VALUES (?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE name = VALUES(name), team = VALUES(team), linked_at = NOW()`,
       [discordId, name, team || null]);
+    // re-key this person's earlier submissions so the scoreboard shows one entry, not one per name
+    await this.pool.query(
+      `UPDATE community_submissions SET user_key = ?, user_name = ?, team = ? WHERE discord_id = ?`,
+      [`${team || ''}/${name}`.toLowerCase(), name, team || null, discordId]);
   }
 
   async getSubmissionByHash(hash) {
