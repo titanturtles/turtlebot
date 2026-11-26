@@ -21,8 +21,12 @@ const PROMPT = (file) => `You are reading a screenshot of a score report saved a
 Use the Read tool to view that image file, then answer with ONE JSON object and nothing else:
 {"readable": true|false,
  "kind": "cyberpatriot"|"packet_tracer"|"other", // which of the two above (or neither)
- "image_name": string|null,        // CyberPatriot: the image/round name. Packet Tracer: the activity name,
-                                    // usually the .pka file name shown in the title bar or window header (drop ".pka")
+ "image_name": string|null,        // CyberPatriot: the large heading at the top of the report, whatever it says -
+                                    // coaches often give rounds/images joke, team-style, or non-English names (e.g.
+                                    // "L'equipe du Dictateur", "Democratic People's Republic of Korea"); transcribe
+                                    // it exactly as the image/round name even if it reads like a team name.
+                                    // Packet Tracer: the activity name, usually the .pka file name shown in the
+                                    // title bar or window header (drop ".pka")
  "score": number|null,             // current score / total points (if only a percentage is shown, convert using max_score, e.g. 80% of 100 -> 80)
  "max_score": number|null,         // total points possible (CyberPatriot is usually 100; Packet Tracer varies, read "Total Score")
  "found_vulns": number|null,       // CyberPatriot: vulnerabilities found. Packet Tracer: assessment items completed/correct, "x out of y"
