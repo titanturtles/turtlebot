@@ -187,6 +187,44 @@ class CommunityImages {
     return sum;
   }
 
+  // Re-read previously 'unreadable' rows from the last `days` days, in case the vision prompt
+  // understands more now than it did when they were first read (e.g. a new report format). Fetches
+  // the original message for a live attachment URL, drops the old row(s) for that message, and
+  // re-stores through the normal pipeline. Silent: never replies/reacts/announces, like backfill().
+  async retryUnreadable(days = 7, opts = {}) {
+    const log = opts.log || (() => {});
+    const cutoff = new Date((opts.now || Date.now()) - days * 86400000);
+    const rows = await this.db.getUnreadableSubmissions(cutoff);
+    const byMessage = new Map();
+    for (const r of rows) {
+      if (!byMessage.has(r.message_url)) byMessage.set(r.message_url, []);
+      byMessage.get(r.message_url).push(r);
+    }
+    const sum = { messages: byMessage.size, checked: rows.length, fixed: 0, stillUnreadable: 0, gone: 0, errors: 0 };
+    for (const [url, group] of byMessage) {
+      const mm = /\/(\d+)\/(\d+)$/.exec(url || '');
+      if (!mm) { sum.errors += group.length; log(`bad message url: ${url}`); continue; }
+      const [, channelId, messageId] = mm;
+      try {
+        const channel = await this.bot.client.channels.fetch(channelId);
+        const m = await channel.messages.fetch(messageId);
+        const atts = [...(m.attachments?.values() || [])].filter((a) => EXTS[(a.contentType || '').split(';')[0]]).slice(0, 3);
+        if (!atts.length) { sum.gone += group.length; log(`attachment(s) gone: ${url}`); continue; }
+        for (const r of group) await this.db.deleteSubmission(r.id);
+        for (const a of atts) {
+          const r = await this.processAttachment(m, a, { createdAt: group[0].created_at });
+          if (r.status !== 'stored') continue;
+          if (r.verdict === 'unreadable') { sum.stillUnreadable++; log(`still unreadable: ${url}`); }
+          else { sum.fixed++; log(`fixed (${r.verdict}) ${r.row.imageName || '?'} ${r.row.score ?? '?'}: ${url}`); }
+        }
+      } catch (e) {
+        sum.errors += group.length;
+        log(`error ${url}: ${e.message}`);
+      }
+    }
+    return sum;
+  }
+
   replyEmbed(report, verdict, reasons, who) {
     const e = new EmbedBuilder().setColor(COLORS[verdict])
       .setTitle(`${EMOJI[verdict]} Score report: ${verdict}`)

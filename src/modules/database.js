@@ -160,6 +160,19 @@ class Database {
     return rows;
   }
 
+  // 'unreadable' rows since `sinceDate`, for retrying with a vision prompt that may understand
+  // more now (e.g. a format added after they were first read).
+  async getUnreadableSubmissions(sinceDate) {
+    const [rows] = await this.pool.query(
+      'SELECT * FROM community_submissions WHERE verdict = ? AND created_at >= ? ORDER BY created_at',
+      ['unreadable', sinceDate]);
+    return rows;
+  }
+
+  async deleteSubmission(id) {
+    await this.pool.query('DELETE FROM community_submissions WHERE id = ?', [id]);
+  }
+
   async insertSubmission(s) {
     await this.pool.query(
       `INSERT INTO community_submissions

@@ -96,11 +96,18 @@ function fakes(readOut) {
       return { links: 0, submissions: n };
     }
   };
+  const unreadable = [];
+  Object.assign(db, {
+    getUnreadableSubmissions: async () => unreadable,
+    deleteSubmission: async (id) => { const i = unreadable.findIndex((r) => r.id === id); if (i >= 0) unreadable.splice(i, 1); }
+  });
   const sent = [];
-  const bot = { client: { on() {}, user: { id: 'BOT' } }, config: { discord: {} }, sendEmbed: async (e, ch) => { sent.push({ e, ch }); } };
+  const channels = new Map();
+  const bot = { client: { on() {}, user: { id: 'BOT' }, channels: { fetch: async (id) => channels.get(id) } },
+    config: { discord: {} }, sendEmbed: async (e, ch) => { sent.push({ e, ch }); } };
   const ci = new CommunityImages(db, bot, { submissionChannelId: 'SUB', announceChannelId: 'ANN', dataDir: require('os').tmpdir() + '/tb-test-' + process.pid },
     { fetchImage: async () => PNG, read: async () => sr.normalizeReport(readOut) });
-  return { ci, db, subs, sent, links };
+  return { ci, db, subs, sent, links, unreadable, channels };
 }
 const msg = (o = {}) => { const replies = [], reacts = [];
   return { replies, reacts, channelId: 'SUB', author: { id: 'U1', username: 'kid', bot: false }, member: { displayName: 'Kid' },
@@ -227,4 +234,25 @@ test('backfill: dedupes by hash, counts vision failures/errors and continues; re
   const d = fakes({ readable: true, image_name: 'U', score: 50, elapsed: '1:00:00' });
   const s5 = await d.ci.backfill({ messages: { fetch: async ({ before }) => new Map(before ? [] : [['7', m3]]) } }, { days: 7, now: NOW, dryRun: true });
   assert.strictEqual(d.subs.length, 0); assert.strictEqual(s5.read, 0);
+});
+
+// ---- retryUnreadable ----
+test('retryUnreadable: re-reads an old unreadable row, drops attachment-gone and bad-url rows, counts errors', async () => {
+  const f = fakes({ readable: true, image_name: 'Subnet Final.pka', score: 90, elapsed: null });
+  const m = msg({ id: '9', url: 'https://discord.com/channels/1/9/9', attachments: imgs(1) });
+  f.channels.set('9', { messages: { fetch: async () => m } });
+  f.unreadable.push({ id: 1, message_url: 'https://discord.com/channels/1/9/9', created_at: new Date(NOW - DAY) });
+  f.unreadable.push({ id: 2, message_url: 'not-a-discord-url', created_at: new Date(NOW - DAY) });
+  const goneMsg = msg({ attachments: new Map() });
+  f.channels.set('8', { messages: { fetch: async () => goneMsg } });
+  f.unreadable.push({ id: 3, message_url: 'https://discord.com/channels/1/8/8', created_at: new Date(NOW - DAY) });
+  const logs = [];
+  const s = await f.ci.retryUnreadable(7, { now: NOW, log: (l) => logs.push(l) });
+  assert.strictEqual(s.checked, 3);
+  assert.strictEqual(s.fixed, 1);
+  assert.strictEqual(s.gone, 1);
+  assert.strictEqual(s.errors, 1);
+  assert.strictEqual(f.subs.length, 1);
+  assert.strictEqual(f.subs[0].image_name, 'Subnet Final.pka');
+  assert.strictEqual(m.replies.length, 0); // silent, like backfill
 });
