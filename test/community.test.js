@@ -32,6 +32,11 @@ test('judge: high score in minutes is suspicious', () => {
   assert.strictEqual(j.verdict, 'suspicious');
   assert.match(j.reasons[0], /implausibly fast/);
 });
+test('judge: packet tracer report is not held to the cyberpatriot pacing floor', () => {
+  const pt = sr.normalizeReport({ readable: true, kind: 'packet_tracer', image_name: 'Subnetting Basics',
+    score: 95, max_score: 100, found_vulns: 9, total_vulns: 10, elapsed: '00:04:00', tampered: false });
+  assert.strictEqual(sr.judge(pt, [], 'a').verdict, 'ok');
+});
 test('judge: tampered, impossible and unreadable', () => {
   assert.strictEqual(sr.judge(rep({ tampered: true, notes: 'font mismatch' }), [], 'a').verdict, 'suspicious');
   assert.strictEqual(sr.judge(rep({ score: 130 }), [], 'a').verdict, 'suspicious');

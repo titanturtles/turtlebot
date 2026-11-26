@@ -1,4 +1,5 @@
-// Reading and judging CyberPatriot-style community image score reports.
+// Reading and judging community score-report screenshots: CyberPatriot-style practice images,
+// and Cisco Packet Tracer activity/assessment screens.
 // Pure helpers (parse / normalise / judge) are separate from the one function that shells out
 // to the `claude` CLI, so tests can mock the vision step.
 const crypto = require('crypto');
@@ -7,16 +8,27 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const PROMPT = (file) => `You are reading a screenshot of a CyberPatriot-style score report (the scoring report of a practice/community image) saved at ${file}.
+const KINDS = new Set(['cyberpatriot', 'packet_tracer', 'other']);
+
+const PROMPT = (file) => `You are reading a screenshot of a score report saved at ${file}. It is one of two kinds:
+1. A CyberPatriot-style score report (the scoring report of a practice/community image): shows a score out of 100,
+   vulnerabilities found, penalties, and time elapsed running the image.
+2. A Cisco Packet Tracer activity check: the "Assessment Items"/"Check Results" window (opened from Activity Wizard
+   or the Check Results button), or the title bar of a Packet Tracer window, showing the activity's .pka file name,
+   a score (often "Current Score" out of "Total Score", sometimes shown as just a percentage), and a list of
+   assessment items each marked complete/incomplete (correct) or not.
+
 Use the Read tool to view that image file, then answer with ONE JSON object and nothing else:
 {"readable": true|false,
- "image_name": string|null,        // image / round name shown on the report
- "score": number|null,             // current score / total points
- "max_score": number|null,         // total points possible if shown (CyberPatriot images are usually 100)
- "found_vulns": number|null,       // vulnerabilities found / "x out of y"
- "total_vulns": number|null,
- "penalties": number|null,         // number of penalties, or penalty points
- "elapsed": string|null,           // time elapsed / image running time exactly as shown, e.g. "01:23:45"
+ "kind": "cyberpatriot"|"packet_tracer"|"other", // which of the two above (or neither)
+ "image_name": string|null,        // CyberPatriot: the image/round name. Packet Tracer: the activity name,
+                                    // usually the .pka file name shown in the title bar or window header (drop ".pka")
+ "score": number|null,             // current score / total points (if only a percentage is shown, convert using max_score, e.g. 80% of 100 -> 80)
+ "max_score": number|null,         // total points possible (CyberPatriot is usually 100; Packet Tracer varies, read "Total Score")
+ "found_vulns": number|null,       // CyberPatriot: vulnerabilities found. Packet Tracer: assessment items completed/correct, "x out of y"
+ "total_vulns": number|null,       // CyberPatriot: total vulnerabilities. Packet Tracer: total assessment items
+ "penalties": number|null,         // number of penalties, or penalty points (CyberPatriot only; leave null for Packet Tracer)
+ "elapsed": string|null,           // time elapsed / image running time exactly as shown, e.g. "01:23:45" (rarely shown for Packet Tracer)
  "elapsed_seconds": number|null,   // the same, in seconds
  "tampered": true|false,           // signs of editing: mismatched fonts, pasted numbers, misaligned text
  "notes": string                   // one short sentence, esp. about anything odd
@@ -61,8 +73,12 @@ function normalizeReport(raw) {
   const name = r.image_name == null ? null : String(r.image_name).trim().slice(0, 120) || null;
   let secs = num(r.elapsed_seconds);
   if (secs == null) secs = parseElapsed(r.elapsed);
+  // Default to 'cyberpatriot' (not 'other') for reports the vision step didn't tag, so judge()'s
+  // CyberPatriot-specific pacing checks still apply to the format they were written for.
+  const kind = KINDS.has(r.kind) ? r.kind : 'cyberpatriot';
   return {
     readable: r.readable !== false,
+    kind,
     imageName: name,
     imageKey: name ? name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() : null,
     score: num(r.score),
@@ -75,6 +91,9 @@ function normalizeReport(raw) {
     notes: String(r.notes || '').slice(0, 300)
   };
 }
+
+// What found_vulns/total_vulns mean, for messages and embed labels.
+const itemsLabel = (kind) => (kind === 'packet_tracer' ? 'assessment items' : 'vulns');
 
 const fmtTime = (secs) => {
   if (secs == null) return '?';
@@ -90,13 +109,16 @@ function judge(report, history, me) {
   if (!report.readable || report.score == null || report.imageName == null) {
     return { verdict: 'unreadable', reasons: ['could not read score and image name from the screenshot'] };
   }
-  const { score, maxScore, elapsedSeconds: secs } = report;
+  const { score, maxScore, elapsedSeconds: secs, kind } = report;
   if (score < 0 || score > maxScore) reasons.push(`score ${score} is outside 0-${maxScore}`);
   if (report.foundVulns != null && report.totalVulns != null && report.foundVulns > report.totalVulns) {
-    reasons.push(`found ${report.foundVulns} of only ${report.totalVulns} vulns`);
+    reasons.push(`found ${report.foundVulns} of only ${report.totalVulns} ${itemsLabel(kind)}`);
   }
   if (report.tampered) reasons.push(`looks edited${report.notes ? ': ' + report.notes : ''}`);
-  if (secs != null && score > 0) {
+  // The "implausibly fast" pacing check is tuned for CyberPatriot images (expects tens of minutes
+  // of hands-on hardening); Packet Tracer activities are legitimately done in a couple of minutes,
+  // so it does not apply there. Packet Tracer also rarely shows elapsed time at all.
+  if (kind !== 'packet_tracer' && secs != null && score > 0) {
     const ratio = Math.min(score / maxScore, 1);
     // floor: ~45 minutes for a perfect score, scaled down, never below 2 minutes
     let floor = Math.max(120, 2700 * ratio);
@@ -161,4 +183,4 @@ async function readScoreReport(buf, ext, { exec = runClaude, bin = 'claude', mod
   }
 }
 
-module.exports = { parseElapsed, parseVisionJson, normalizeReport, judge, sha256, readScoreReport, fmtTime, runClaude, PROMPT };
+module.exports = { parseElapsed, parseVisionJson, normalizeReport, judge, sha256, readScoreReport, fmtTime, runClaude, PROMPT, itemsLabel };

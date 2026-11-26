@@ -31,7 +31,7 @@ function buildFeed(rows) {
     const ranked = entries.filter((e) => e.best.verdict === 'ok').sort((a, b) => (better(a.best, b.best) ? -1 : 1));
     const pub = (r) => ({
       score: r.score, max_score: r.max_score, found_vulns: r.found_vulns, total_vulns: r.total_vulns,
-      penalties: r.penalties, elapsed_seconds: r.elapsed_seconds, verdict: r.verdict,
+      penalties: r.penalties, elapsed_seconds: r.elapsed_seconds, verdict: r.verdict, kind: r.kind || null,
       reasons: typeof r.reasons === 'string' ? JSON.parse(r.reasons) : (r.reasons || []),
       thumb: r.image_file ? `/community/img/${r.image_hash}` : null,
       submitted: new Date(r.created_at).toISOString()

@@ -96,7 +96,7 @@ class CommunityImages {
       imageName: report.imageName, imageKey: report.imageKey, score: report.score, maxScore: report.maxScore,
       foundVulns: report.foundVulns, totalVulns: report.totalVulns, penalties: report.penalties,
       elapsedSeconds: report.elapsedSeconds, verdict, reasons, imageFile, messageUrl: m.url,
-      createdAt: opts.createdAt || null
+      createdAt: opts.createdAt || null, kind: report.kind
     };
     await this.db.insertSubmission(row);
     return { status: 'stored', row, report, verdict, reasons, who };
@@ -182,7 +182,10 @@ class CommunityImages {
         { name: 'Image', value: report.imageName || '?', inline: true },
         { name: 'Score', value: report.score == null ? '?' : `${report.score}/${report.maxScore}`, inline: true },
         { name: 'Time', value: sr.fmtTime(report.elapsedSeconds), inline: true });
-    if (report.foundVulns != null) e.addFields({ name: 'Vulns', value: `${report.foundVulns}/${report.totalVulns ?? '?'}`, inline: true });
+    if (report.foundVulns != null) {
+      const label = report.kind === 'packet_tracer' ? 'Items' : 'Vulns';
+      e.addFields({ name: label, value: `${report.foundVulns}/${report.totalVulns ?? '?'}`, inline: true });
+    }
     if (report.penalties != null) e.addFields({ name: 'Penalties', value: String(report.penalties), inline: true });
     if (reasons.length) e.addFields({ name: verdict === 'suspicious' ? 'Why flagged' : 'Problem', value: reasons.join('\n').slice(0, 1000) });
     const foot = [];

@@ -99,6 +99,11 @@ class Database {
         INDEX idx_image_key (image_key)
       )
     `);
+    // added later: which kind of report this is (cyberpatriot/packet_tracer/other); NULL for
+    // rows inserted before this column existed, which judge()/the feed treat as cyberpatriot.
+    await this.pool.query(`
+      ALTER TABLE community_submissions ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NULL
+    `);
   }
 
   async getDiscordLink(discordId) {
@@ -144,11 +149,11 @@ class Database {
     await this.pool.query(
       `INSERT INTO community_submissions
         (image_hash, discord_id, user_key, user_name, team, image_name, image_key, score, max_score,
-         found_vulns, total_vulns, penalties, elapsed_seconds, verdict, reasons, image_file, message_url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))`,
+         found_vulns, total_vulns, penalties, elapsed_seconds, verdict, reasons, image_file, message_url, created_at, kind)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()), ?)`,
       [s.imageHash, s.discordId, s.userKey, s.userName, s.team || null, s.imageName, s.imageKey, s.score,
         s.maxScore, s.foundVulns, s.totalVulns, s.penalties, s.elapsedSeconds, s.verdict,
-        JSON.stringify(s.reasons || []), s.imageFile || null, s.messageUrl || null, s.createdAt || null]);
+        JSON.stringify(s.reasons || []), s.imageFile || null, s.messageUrl || null, s.createdAt || null, s.kind || null]);
   }
 
   async disconnect() {
