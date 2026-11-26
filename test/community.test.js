@@ -89,7 +89,12 @@ function fakes(readOut) {
     getSubmissionsForImage: async (k) => subs.filter((s) => s.image_key === k),
     insertSubmission: async (s) => subs.push({ image_hash: s.imageHash, user_key: s.userKey, user_name: s.userName, team: s.team,
       image_name: s.imageName, image_key: s.imageKey, score: s.score, elapsed_seconds: s.elapsedSeconds, verdict: s.verdict,
-      reasons: JSON.stringify(s.reasons), url: s.messageUrl, created_at: s.createdAt || new Date() })
+      reasons: JSON.stringify(s.reasons), url: s.messageUrl, created_at: s.createdAt || new Date() }),
+    mergeAliases: async (from, to) => {
+      let n = 0;
+      for (const s of subs) if (s.user_name.toLowerCase() === from.toLowerCase()) { s.user_name = to; n++; }
+      return { links: 0, submissions: n };
+    }
   };
   const sent = [];
   const bot = { client: { on() {}, user: { id: 'BOT' } }, config: { discord: {} }, sendEmbed: async (e, ch) => { sent.push({ e, ch }); } };
@@ -139,6 +144,20 @@ test('link via mention, other channels and bots are ignored', async () => {
   const m = msg(); await f.ci.onMessage(m);
   assert.strictEqual(f.subs[0].team, 'TeamRed');
   assert.match(f.sent[0].e.data.fields[0].value, /TeamRed/);
+});
+
+test('merge requires Manage Guild permission, then combines aliases', async () => {
+  const f = fakes({ readable: true, image_name: 'U', score: 50, elapsed: '1:00:00' });
+  await f.ci.onMessage(msg()); // stores a submission under displayName 'Kid'
+  const base = { attachments: new Map(), content: '<@BOT> merge Kid into KidMain', mentions: { users: new Map([['BOT', {}]]) } };
+  const denied = msg({ ...base, member: { permissions: { has: () => false } } });
+  await f.ci.onMessage(denied);
+  assert.match(denied.replies[0], /Only admins/);
+  assert.strictEqual(f.subs[0].user_name, 'Kid');
+  const allowed = msg({ ...base, member: { permissions: { has: () => true } } });
+  await f.ci.onMessage(allowed);
+  assert.match(allowed.replies[0], /Merged \*\*Kid\*\* into \*\*KidMain\*\*/);
+  assert.strictEqual(f.subs[0].user_name, 'KidMain');
 });
 
 test('vision failure replies without storing', async () => {

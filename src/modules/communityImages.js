@@ -1,9 +1,10 @@
 // #homework-submission: read community-image score-report screenshots, judge, store, announce.
 // Reading attachments needs the privileged Message Content intent (community.messageContent: true);
-// linking uses "@turtlebot link <name> [team]".
+// linking uses "@turtlebot link <name> [team]"; admins (Manage Guild) can combine two aliases that
+// turned out to be the same person with "@turtlebot merge <alias> into <alias>".
 const fs = require('fs');
 const path = require('path');
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 const sr = require('./scoreReport');
 const { rankFor } = require('./communityFeed');
 
@@ -49,8 +50,19 @@ class CommunityImages {
     if (!m || m.author?.bot) return;
     const subId = await this.channelId('submission', 'homework-submission');
     if (m.channelId !== subId) return;
-    const link = /\blink\s+(\S+)(?:\s+(.+))?$/i.exec((m.content || '').replace(/<@!?\d+>/g, '').trim());
-    if (link && m.mentions?.users?.has(this.bot.client.user.id)) {
+    const mentioned = m.mentions?.users?.has(this.bot.client.user.id);
+    const content = (m.content || '').replace(/<@!?\d+>/g, '').trim();
+    const merge = /\bmerge\s+(\S+)\s+into\s+(\S+)/i.exec(content);
+    if (merge && mentioned) {
+      if (!m.member?.permissions?.has(PermissionsBitField.Flags.ManageGuild)) {
+        return m.reply("Only admins (Manage Server permission) can merge aliases.");
+      }
+      const { links, submissions } = await this.db.mergeAliases(merge[1], merge[2]);
+      return m.reply(`Merged **${merge[1]}** into **${merge[2]}** `
+        + `(${links} link${links === 1 ? '' : 's'}, ${submissions} submission${submissions === 1 ? '' : 's'}).`);
+    }
+    const link = /\blink\s+(\S+)(?:\s+(.+))?$/i.exec(content);
+    if (link && mentioned) {
       await this.db.setDiscordLink(m.author.id, link[1].slice(0, 100), (link[2] || '').trim().slice(0, 100) || null);
       return m.reply(`Linked you as **${link[1]}**${link[2] ? ` (team **${link[2].trim()}**)` : ''}.`);
     }

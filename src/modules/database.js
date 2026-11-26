@@ -124,6 +124,19 @@ class Database {
       [`${team || ''}/${name}`.toLowerCase(), name, team || null, discordId]);
   }
 
+  // Merge every discord_link and submission filed under `fromAlias` into `toAlias` (case-insensitive
+  // match on the stored name), so two aliases that turned out to be the same person show as one
+  // scoreboard entry. Keeps each row's own team. Returns rows affected in each table.
+  async mergeAliases(fromAlias, toAlias) {
+    const [links] = await this.pool.query(
+      'UPDATE discord_links SET name = ? WHERE LOWER(name) = LOWER(?)', [toAlias, fromAlias]);
+    const [subs] = await this.pool.query(
+      `UPDATE community_submissions SET user_name = ?, user_key = LOWER(CONCAT(COALESCE(team, ''), '/', ?))
+       WHERE LOWER(user_name) = LOWER(?)`,
+      [toAlias, toAlias, fromAlias]);
+    return { links: links.affectedRows, submissions: subs.affectedRows };
+  }
+
   async getSubmissionByHash(hash) {
     const [rows] = await this.pool.query('SELECT * FROM community_submissions WHERE image_hash = ?', [hash]);
     return rows[0] || null;
