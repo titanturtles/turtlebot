@@ -101,9 +101,11 @@ class Database {
     `);
     // added later: which kind of report this is (cyberpatriot/packet_tracer/other); NULL for
     // rows inserted before this column existed, which judge()/the feed treat as cyberpatriot.
-    await this.pool.query(`
-      ALTER TABLE community_submissions ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NULL
-    `);
+    // MySQL has no "ADD COLUMN IF NOT EXISTS", so check information_schema first.
+    const [[{ n }]] = await this.pool.query(
+      `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'community_submissions' AND COLUMN_NAME = 'kind'`);
+    if (!n) await this.pool.query('ALTER TABLE community_submissions ADD COLUMN kind VARCHAR(16) NULL');
   }
 
   async getDiscordLink(discordId) {
